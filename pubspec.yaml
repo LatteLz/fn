@@ -1,0 +1,39 @@
+name: strokeguard
+description: StrokeGuard AI — Phát hiện sớm nguy cơ đột quỵ | Nhóm 9 NCKH 2026
+publish_to: 'none'
+version: 2.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+
+  # Firebase
+  firebase_core: ^4.11.0
+  firebase_auth: ^6.5.3
+  cloud_firestore: ^6.6.0
+
+  # Health Connect (Samsung Fit 3)
+  health: any
+  permission_handler: ^12.0.3
+
+  # Network
+  http: ^1.2.1
+
+  # UI
+  fl_chart: ^1.2.0
+  intl: ^0.20.2
+
+  # Storage
+  shared_preferences: ^2.2.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
