@@ -1,11 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
-    <!-- Internet -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
-
-    <!-- Health Connect READ permissions — khai báo đúng tên package -->
+    
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.health.READ_HEART_RATE"/>
     <uses-permission android:name="android.permission.health.READ_OXYGEN_SATURATION"/>
     <uses-permission android:name="android.permission.health.READ_SLEEP"/>
@@ -15,14 +13,21 @@
     <uses-permission android:name="android.permission.health.READ_WEIGHT"/>
     <uses-permission android:name="android.permission.health.READ_HEIGHT"/>
     <uses-permission android:name="android.permission.health.READ_BODY_MASS_INDEX"/>
+    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"/>
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION"/>
-
+<uses-permission android:name="android.permission.INTERNET"/>
+<uses-permission android:name="android.permission.WAKE_LOCK"/>
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
     <application
         android:label="StrokeGuard AI"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">
-
+<service
+    android:name="id.flutter.flutter_background_service.BackgroundService"
+    android:foregroundServiceType="dataSync"
+    android:exported="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -42,13 +47,13 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
-            <!-- BẮT BUỘC để Health Connect hiện popup xin quyền -->
+            <!-- Cần khai báo để Health Connect hiển thị hướng dẫn về quyền. -->
             <intent-filter>
                 <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE"/>
             </intent-filter>
         </activity>
 
-        <!-- BẮT BUỘC: activity-alias cho Health Connect permission usage -->
+        <!-- Cần khai báo để hiển thị thông tin sử dụng quyền Health Connect. -->
         <activity-alias
             android:name="ViewPermissionUsageActivity"
             android:exported="true"
@@ -65,7 +70,7 @@
             android:value="2"/>
     </application>
 
-    <!-- BẮT BUỘC: queries block để app thấy Health Connect -->
+    <!-- Cần khai báo để nhận diện Health Connect và Samsung Health. -->
     <queries>
         <package android:name="com.google.android.apps.healthdata"/>
         <package android:name="com.samsung.android.wear.shealth"/>

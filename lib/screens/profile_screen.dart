@@ -1,9 +1,8 @@
-// STT5 - Trần Thị Hiền
-// Thông tin người dùng + trạng thái Samsung Fit 3 + stress estimate + đăng xuất
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/models.dart';
+import '../services/background_monitoring.dart';
 import '../services/health_service.dart';
 import '../theme/app_theme.dart';
 
@@ -42,11 +41,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     'Never_worked',
   ];
   static const Map<String, String> _workTypeLabel = {
-    'Private': 'Tu nhan',
-    'Self-employed': 'Tu kinh doanh',
-    'Govt_job': 'Nha nuoc',
-    'children': 'Tre em',
-    'Never_worked': 'Chua di lam',
+    'Private': 'Tư nhân',
+    'Self-employed': 'Tự kinh doanh',
+    'Govt_job': 'Nhà nước',
+    'children': 'Trẻ em',
+    'Never_worked': 'Chưa đi làm',
   };
   static const List<String> _smokingStatuses = [
     'never smoked',
@@ -55,10 +54,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     'Unknown',
   ];
   static const Map<String, String> _smokingLabel = {
-    'never smoked': 'Chua bao gio hut',
-    'formerly smoked': 'Da bo thuoc',
-    'smokes': 'Dang hut thuoc',
-    'Unknown': 'Khong ro',
+    'never smoked': 'Chưa bao giờ hút',
+    'formerly smoked': 'Đã bỏ thuốc',
+    'smokes': 'Đang hút thuốc',
+    'Unknown': 'Không rõ',
   };
 
   @override
@@ -104,7 +103,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         await ref.set({
           'uid': uid,
           'name':
-              fbUser.displayName ?? fbUser.email?.split('@')[0] ?? 'Nguoi dung',
+              fbUser.displayName ?? fbUser.email?.split('@')[0] ?? 'Người dùng',
           'email': fbUser.email ?? '',
           'gender': 0,
           'age': 25,
@@ -141,12 +140,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const Duration(seconds: 15),
               onTimeout: () => BiometricSnapshot.defaultValues())
           : BiometricSnapshot.defaultValues();
-      if (mounted)
+      if (mounted) {
         setState(() {
           _bio = bio;
           _fit3Ok = granted && !bio.isSimulated;
           _loading = false;
         });
+      }
     } catch (e) {
       debugPrint('_load Health error: $e');
       if (mounted) setState(() => _loading = false);
@@ -156,14 +156,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _save() async {
     if (_user == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Chua load duoc ho so, vui long thu lai'),
+          content: Text('Chưa nạp được hồ sơ, vui lòng thử lại'),
           backgroundColor: Colors.orange));
       return;
     }
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid != null) {
+    if (uid == null) {
+      setState(() => _saving = false);
+      return;
+    }
+
+    try {
       final updated = UserModel(
         uid: _user!.uid,
         name: _user!.name,
@@ -183,14 +188,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
           .collection('users')
           .doc(uid)
           .update(updated.toJson());
-      if (mounted)
-        setState(() {
-          _user = updated;
-          _editing = false;
-          _saving = false;
-        });
+      if (!mounted) return;
+      setState(() {
+        _user = updated;
+        _editing = false;
+        _saving = false;
+      });
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Da luu'), backgroundColor: SGColor.riskLow));
+          content: Text('Đã cập nhật hồ sơ lâm sàng thành công!'),
+          backgroundColor: SGColor.riskLow));
+    } catch (error) {
+      debugPrint('_save profile error: $error');
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Không thể cập nhật hồ sơ: $error'),
+          backgroundColor: SGColor.riskHigh));
     }
   }
 
@@ -198,32 +211,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final ok = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-              title: const Text('Dang xuat?'),
+              title: const Text('Đăng xuất khỏi hệ thống?'),
+              content: const Text(
+                  'Bạn có chắc chắn muốn đăng xuất khỏi tài khoản StrokeGuard này không?'),
               actions: [
                 TextButton(
                     onPressed: () => Navigator.pop(ctx, false),
-                    child: const Text('Huy')),
+                    child: const Text('Hủy')),
                 TextButton(
                     onPressed: () => Navigator.pop(ctx, true),
-                    child: const Text('Dang xuat',
+                    child: const Text('Đăng xuất',
                         style: TextStyle(color: SGColor.riskHigh))),
               ],
             ));
-    if (ok == true) await FirebaseAuth.instance.signOut();
+    if (ok == true) {
+      await BackgroundMonitoring.stop();
+      await FirebaseAuth.instance.signOut();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading)
+    if (_loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     return Scaffold(
       backgroundColor: SGColor.bg,
       appBar: AppBar(
-        title: const Text('Ho so ca nhan'),
+        title: const Text('Hồ sơ cá nhân'),
         actions: [
           if (!_editing)
             IconButton(
-              icon: const Icon(Icons.edit),
+              icon: const Icon(Icons.edit_note_rounded, size: 28),
               onPressed: () {
                 if (_user != null) _syncEditState(_user!);
                 setState(() => _editing = true);
@@ -232,7 +251,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           if (_editing) ...[
             TextButton(
               onPressed: () => setState(() => _editing = false),
-              child: const Text('Huy', style: TextStyle(color: Colors.white70)),
+              child: const Text('Hủy', style: TextStyle(color: Colors.white70)),
             ),
             TextButton(
               onPressed: _saving ? null : _save,
@@ -242,7 +261,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       height: 18,
                       child: CircularProgressIndicator(
                           color: Colors.white, strokeWidth: 2))
-                  : const Text('Luu',
+                  : const Text('Lưu',
                       style: TextStyle(
                           color: Colors.white, fontWeight: FontWeight.bold)),
             ),
@@ -251,7 +270,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       body: _user == null
           ? const Center(
-              child: Text('Chua co ho so. Dang xuat roi dang ky lai.'))
+              child: Text('Chưa có dữ liệu hồ sơ. Vui lòng đăng nhập lại.'))
           : SingleChildScrollView(
               padding: const EdgeInsets.symmetric(vertical: 16),
               child: Form(
@@ -261,8 +280,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: Row(children: [
                         CircleAvatar(
                           radius: 32,
-                          backgroundColor:
-                              SGColor.primary.withValues(alpha: 0.12),
+                          backgroundColor: SGColor.primary.withOpacity(0.12),
                           child: Text(
                             _user!.name.isNotEmpty
                                 ? _user!.name[0].toUpperCase()
@@ -278,6 +296,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(_user!.name, style: SGText.h2),
+                              const SizedBox(height: 4),
                               Text(_user!.email, style: SGText.caption),
                             ]),
                       ]),
@@ -289,26 +308,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             Row(children: [
                               Icon(Icons.watch_rounded,
                                   color:
-                                      _fit3Ok ? SGColor.riskLow : Colors.grey,
+                                      _fit3Ok ? SGColor.riskLow : Colors.orange,
                                   size: 28),
                               const SizedBox(width: 10),
                               Expanded(
-                                  child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
                                     const Text('Samsung Galaxy Fit 3',
                                         style: SGText.h3),
                                     Text(
-                                        _fit3Ok
-                                            ? 'Da ket noi - du lieu thuc'
-                                            : 'Chua ket noi / mo phong',
-                                        style: TextStyle(
-                                            color: _fit3Ok
-                                                ? SGColor.riskLow
-                                                : Colors.orange,
-                                            fontSize: 13)),
-                                  ])),
+                                      _fit3Ok
+                                          ? 'Đã kết nối - Dữ liệu thời gian thực'
+                                          : 'Chưa kết nối / Chế độ mô phỏng',
+                                      style: TextStyle(
+                                        color: _fit3Ok
+                                            ? SGColor.riskLow
+                                            : Colors.orange,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                               if (_bio != null)
                                 Column(
                                     crossAxisAlignment: CrossAxisAlignment.end,
@@ -328,11 +350,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               const Divider(),
                               const SizedBox(height: 10),
                               const Text(
-                                  'Chi so Stress uoc tinh (HR + SpO2 + Sleep)',
+                                  'Chỉ số Stress ước tính (HR + SpO2 + Sleep)',
                                   style: SGText.label),
                               const SizedBox(height: 8),
                               Row(children: [
-                                Text(_bio!.stressScore.toStringAsFixed(0),
+                                Text('${_bio!.stressScore.toStringAsFixed(0)}',
                                     style: const TextStyle(
                                         fontSize: 30,
                                         fontWeight: FontWeight.bold,
@@ -342,15 +364,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ]),
                               const SizedBox(height: 8),
                               ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: LinearProgressIndicator(
-                                  value: _bio!.stressScore / 100,
-                                  minHeight: 10,
-                                  backgroundColor: Colors.orange.shade100,
-                                  valueColor: const AlwaysStoppedAnimation(
-                                      Colors.orange),
-                                ),
-                              ),
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: LinearProgressIndicator(
+                                    value: _bio!.stressScore / 100,
+                                    minHeight: 10,
+                                    backgroundColor: Colors.orange.shade100,
+                                    valueColor: const AlwaysStoppedAnimation(
+                                        Colors.orange),
+                                  )),
                             ],
                           ]),
                     ),
@@ -358,73 +379,77 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Thong tin lam sang', style: SGText.h3),
+                            const Text('Thông tin khám sức khỏe',
+                                style: SGText.h3),
                             const SizedBox(height: 12),
                             _editing
                                 ? _toggleRow(
-                                    label: 'Gioi tinh',
+                                    label: 'Giới tính',
                                     value: _editGender == 0,
                                     trueLabel: 'Nam',
-                                    falseLabel: 'Nu',
+                                    falseLabel: 'Nữ',
                                     onChanged: (v) =>
                                         setState(() => _editGender = v ? 0 : 1),
                                   )
-                                : _row('Gioi tinh',
-                                    _user!.gender == 0 ? 'Nam' : 'Nu'),
+                                : _row('Giới tính',
+                                    _user!.gender == 0 ? 'Nam' : 'Nữ'),
                             _editing
-                                ? _numField(_ageCtrl, 'Tuoi', (v) {
+                                ? _numField(_ageCtrl, 'Tuổi', (v) {
                                     final n = int.tryParse(v ?? '');
                                     return (n == null || n < 1 || n > 120)
-                                        ? 'Nhap 1-120'
+                                        ? 'Vui lòng nhập từ 1-120 tuổi'
                                         : null;
                                   })
-                                : _row('Tuoi', '${_user!.age} tuoi'),
+                                : _row('Tuổi', '${_user!.age} tuổi'),
                             const Divider(height: 20),
                             _editing
                                 ? _switchRow(
-                                    label: 'Cao huyet ap',
+                                    label: 'Tăng huyết áp',
                                     value: _editHypertension,
                                     onChanged: (v) =>
                                         setState(() => _editHypertension = v),
                                   )
-                                : _row('Cao huyet ap',
-                                    _user!.hypertension ? 'Co' : 'Khong'),
+                                : _row('Tăng huyết áp',
+                                    _user!.hypertension ? 'Có' : 'Không'),
                             _editing
                                 ? _switchRow(
-                                    label: 'Benh tim',
+                                    label: 'Bệnh lý tim mạch',
                                     value: _editHeartDisease,
                                     onChanged: (v) =>
                                         setState(() => _editHeartDisease = v),
                                   )
-                                : _row('Benh tim',
-                                    _user!.heartDisease ? 'Co' : 'Khong'),
+                                : _row('Bệnh lý tim mạch',
+                                    _user!.heartDisease ? 'Có' : 'Không'),
                             _editing
                                 ? _switchRow(
-                                    label: 'Da ket hon',
+                                    label: 'Từng kết hôn',
                                     value: _editEverMarried,
                                     onChanged: (v) =>
                                         setState(() => _editEverMarried = v),
                                   )
-                                : _row('Ket hon',
-                                    _user!.everMarried ? 'Da ket hon' : 'Chua'),
+                                : _row(
+                                    'Từng kết hôn',
+                                    _user!.everMarried
+                                        ? 'Đã kết hôn'
+                                        : 'Chưa kết hôn'),
                             _editing
                                 ? _toggleRow(
-                                    label: 'Cu tru',
+                                    label: 'Khu vực cư trú',
                                     value: _editResidenceType == 1,
-                                    trueLabel: 'Thanh thi',
-                                    falseLabel: 'Nong thon',
+                                    trueLabel: 'Thành thị',
+                                    falseLabel: 'Nông thôn',
                                     onChanged: (v) => setState(
                                         () => _editResidenceType = v ? 1 : 0),
                                   )
                                 : _row(
-                                    'Cu tru',
+                                    'Khu vực cư trú',
                                     _user!.residenceType == 1
-                                        ? 'Thanh thi'
-                                        : 'Nong thon'),
+                                        ? 'Thành thị'
+                                        : 'Nông thôn'),
                             const Divider(height: 20),
                             _editing
                                 ? _dropdownRow<String>(
-                                    label: 'Cong viec',
+                                    label: 'Nhóm công việc',
                                     value: _editWorkType,
                                     items: _workTypes,
                                     itemLabel: (v) => _workTypeLabel[v] ?? v,
@@ -432,12 +457,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         setState(() => _editWorkType = v!),
                                   )
                                 : _row(
-                                    'Cong viec',
+                                    'Nhóm công việc',
                                     _workTypeLabel[_user!.workType] ??
                                         _user!.workType),
                             _editing
                                 ? _dropdownRow<String>(
-                                    label: 'Hut thuoc',
+                                    label: 'Tình trạng hút thuốc',
                                     value: _editSmokingStatus,
                                     items: _smokingStatuses,
                                     itemLabel: (v) => _smokingLabel[v] ?? v,
@@ -445,28 +470,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         setState(() => _editSmokingStatus = v!),
                                   )
                                 : _row(
-                                    'Hut thuoc',
+                                    'Tình trạng hút thuốc',
                                     _smokingLabel[_user!.smokingStatus] ??
                                         _user!.smokingStatus),
                             const Divider(height: 20),
                             _editing
-                                ? _numField(_gluCtrl, 'Duong huyet (mg/dL)',
+                                ? _numField(_gluCtrl,
+                                    'Chỉ số đường huyết trung bình (mg/dL)',
                                     (v) {
                                     final n = double.tryParse(v ?? '');
                                     return (n == null || n < 50 || n > 300)
-                                        ? 'Nhap 50-300'
+                                        ? 'Nhập giá trị hợp lệ 50-300 mg/dL'
                                         : null;
                                   })
-                                : _row('Duong huyet',
+                                : _row('Đường huyết trung bình',
                                     '${_user!.avgGlucoseLevel} mg/dL'),
                             _editing
-                                ? _numField(_bmiCtrl, 'BMI', (v) {
+                                ? _numField(
+                                    _bmiCtrl, 'Chỉ số khối cơ thể (BMI)', (v) {
                                     final n = double.tryParse(v ?? '');
                                     return (n == null || n < 10 || n > 60)
-                                        ? 'Nhap 10-60'
+                                        ? 'Nhập chỉ số BMI hợp lệ từ 10-60'
                                         : null;
                                   })
-                                : _row('BMI', _user!.bmi.toString()),
+                                : _row('Chỉ số khối cơ thể (BMI)',
+                                    _user!.bmi.toString()),
                           ]),
                     ),
                     Padding(
@@ -482,8 +510,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 borderRadius: BorderRadius.circular(12)),
                           ),
                           onPressed: _logout,
-                          icon: const Icon(Icons.logout),
-                          label: const Text('Dang xuat',
+                          icon: const Icon(Icons.logout_rounded),
+                          label: const Text('Đăng xuất tài khoản',
                               style: TextStyle(fontWeight: FontWeight.bold)),
                         ),
                       ),
@@ -494,7 +522,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _row(String label, String value) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(children: [
           Text(label, style: SGText.label),
           const Spacer(),
@@ -513,7 +541,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Text(label, style: SGText.label),
           const Spacer(),
           Row(children: [
-            Text(value ? 'Co' : 'Khong',
+            Text(value ? 'Có' : 'Không',
                 style: TextStyle(
                     color: value ? SGColor.riskHigh : SGColor.textSub,
                     fontWeight: FontWeight.bold,
@@ -522,7 +550,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Switch(
               value: value,
               onChanged: onChanged,
-              activeThumbColor: SGColor.riskHigh,
+              activeColor: SGColor.riskHigh,
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
           ]),
@@ -614,7 +642,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             labelText: label,
             isDense: true,
             contentPadding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
           ),
           validator: validator,

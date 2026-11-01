@@ -1,10 +1,10 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:http/http.dart' as http;
 import '../models/models.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://192.168.189.1:8000';
-
+  static const String baseUrl = "http://10.88.194.1:8000";
   static Future<PredictionResult> predict({
     required UserModel user,
     required BiometricSnapshot bio,

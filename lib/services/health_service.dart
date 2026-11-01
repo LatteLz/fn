@@ -19,7 +19,6 @@ class HealthService {
   static Future<bool> requestPermissions() async {
     try {
       await Permission.activityRecognition.request();
-
       await Permission.sensors.request();
 
       return await _health.requestAuthorization(
@@ -29,206 +28,187 @@ class HealthService {
     } catch (e, stack) {
       debugPrint("PERMISSION ERROR $e");
       debugPrint(stack.toString());
-
       return false;
     }
   }
 
   static Future<BiometricSnapshot> fetchLatestData() async {
-    final now = DateTime.now();
-
-    final start = now.subtract(const Duration(days: 7));
-
-    List<HealthDataPoint> pts = [];
-
     try {
-      pts = await _health.getHealthDataFromTypes(
-        startTime: start,
-        endTime: now,
-        types: _types,
-      );
-
-      debugPrint("HEALTH POINTS ${pts.length}");
-    } catch (e, stack) {
-      debugPrint("FETCH ERROR $e");
-      debugPrint(stack.toString());
-
+      final snapshot = await _fetchSnapshot(requireVitals: false);
+      return snapshot ?? BiometricSnapshot.defaultValues();
+    } catch (error, stackTrace) {
+      debugPrint('HEALTH FETCH ERROR: $error');
+      debugPrint(stackTrace.toString());
       return BiometricSnapshot.defaultValues();
     }
+  }
 
-    if (pts.isEmpty) {
-      return BiometricSnapshot.defaultValues();
+  static Future<BiometricSnapshot?> fetchBackgroundSnapshot() async {
+    try {
+      return await _fetchSnapshot(requireVitals: true);
+    } catch (error, stackTrace) {
+      debugPrint('BACKGROUND HEALTH FETCH ERROR: $error');
+      debugPrint(stackTrace.toString());
+      return null;
     }
+  }
 
-    double last(HealthDataType type, double fallback) {
-      final list = pts.where((p) => p.type == type).toList();
-
-      if (list.isEmpty) {
-        return fallback;
-      }
-
-      return (list.last.value as NumericHealthValue).numericValue.toDouble();
-    }
-
-    // ================= HEART =================
-
-    final hr = last(
-      HealthDataType.HEART_RATE,
-      72,
+  static Future<BiometricSnapshot?> _fetchSnapshot({
+    required bool requireVitals,
+  }) async {
+    final now = DateTime.now();
+    final start = now.subtract(const Duration(days: 7));
+    final startToday = DateTime(now.year, now.month, now.day);
+    final points = await _health.getHealthDataFromTypes(
+      startTime: start,
+      endTime: now,
+      types: _types,
     );
+    if (points.isEmpty) return null;
 
-    // ================= SPO2 =================
-
-    double spo2 = last(
-      HealthDataType.BLOOD_OXYGEN,
-      98,
-    );
-
-    if (spo2 <= 1) {
-      spo2 *= 100;
-    }
-
-    // ================= SLEEP =================
-
-    List<HealthDataPoint> sleepPts = pts.where((p) {
-      return p.type == HealthDataType.SLEEP_ASLEEP &&
-          p.dateTo.isBefore(now) &&
-          p.dateTo.isAfter(
-            now.subtract(
-              const Duration(days: 2),
-            ),
-          );
-    }).toList();
-
-    // nếu không có asleep lấy session
-
-    if (sleepPts.isEmpty) {
-      sleepPts = pts.where((p) {
-        return p.type == HealthDataType.SLEEP_SESSION &&
-            p.dateTo.isBefore(now) &&
-            p.dateTo.isAfter(
-              now.subtract(
-                const Duration(days: 2),
-              ),
-            );
-      }).toList();
-    }
-
-    double sleepHours = 0;
-
-    if (sleepPts.isNotEmpty) {
-      sleepPts.sort((a, b) => b.dateTo.compareTo(a.dateTo));
-
-      final s = sleepPts.first;
-
-      final minutes = s.dateTo.difference(s.dateFrom).inMinutes;
-
-      debugPrint("""
-====== SLEEP ======
-
-FROM:
-${s.dateFrom}
-
-TO:
-${s.dateTo}
-
-MIN:
-$minutes
-
-===================
-""");
-
-      if (minutes > 0 && minutes < 900) {
-        sleepHours = double.parse((minutes / 60).toStringAsFixed(1));
+    double? latestNumericValue(HealthDataType type) {
+      final matching = points.where((point) => point.type == type).toList()
+        ..sort((a, b) => b.dateTo.compareTo(a.dateTo));
+      if (matching.isEmpty || matching.first.value is! NumericHealthValue) {
+        return null;
       }
+      return (matching.first.value as NumericHealthValue)
+          .numericValue
+          .toDouble();
     }
 
-    debugPrint("FINAL SLEEP $sleepHours h");
-
-    // ================= STEPS =================
-
-    final startToday = DateTime(
-      now.year,
-      now.month,
-      now.day,
-    );
-
-    int steps = 0;
-
-    final stepPts = pts.where((p) {
-      return p.type == HealthDataType.STEPS &&
-          p.dateFrom.isBefore(now) &&
-          p.dateTo.isAfter(startToday);
-    }).toList();
-
-    for (final p in stepPts) {
-      if (p.value is NumericHealthValue) {
-        steps += (p.value as NumericHealthValue).numericValue.toInt();
-      }
+    final heartRateValue = latestNumericValue(HealthDataType.HEART_RATE);
+    var spo2Value = latestNumericValue(HealthDataType.BLOOD_OXYGEN);
+    if (requireVitals && (heartRateValue == null || spo2Value == null)) {
+      return null;
     }
+    final heartRate = heartRateValue ?? 72;
+    var spo2 = spo2Value ?? 98;
+    if (spo2 <= 1) spo2 *= 100;
 
-    // ================= CALORIES =================
-
-    double calories = 0;
-
-    final calPts = pts.where((p) {
-      return p.type == HealthDataType.ACTIVE_ENERGY_BURNED &&
-          p.dateFrom.isBefore(now) &&
-          p.dateTo.isAfter(startToday);
-    }).toList();
-
-    for (final p in calPts) {
-      if (p.value is NumericHealthValue) {
-        final value = (p.value as NumericHealthValue).numericValue.toDouble();
-
-        calories += value;
-
-        debugPrint("CAL RECORD $value");
-      }
-    }
-
-    final caloriesFinal =
-        calories > 0 ? double.parse(calories.toStringAsFixed(0)) : steps * 0.04;
-
-    debugPrint("""
-====== TODAY ======
-
-STEP:
-$steps
-
-CALORIES:
-$calories
-
-CAL FINAL:
-$caloriesFinal
-
-===================
-""");
-
-    // ================= BMI =================
-
-    final bmi = last(
-      HealthDataType.BODY_MASS_INDEX,
-      22,
-    );
-
+    final sleepHours = _latestSleepHours(points, now);
+    final steps = await _todaySteps(points, startToday, now);
+    final calories = _todayActiveCalories(points, startToday, now);
+    final bmi = latestNumericValue(HealthDataType.BODY_MASS_INDEX) ?? 22;
     final stress = _estimateStress(
-      hr: hr,
+      hr: heartRate,
       spo2: spo2,
       sleepHours: sleepHours,
     );
 
     return BiometricSnapshot(
-      heartRate: hr.clamp(30, 220),
+      heartRate: heartRate.clamp(30, 220),
       spo2: spo2.clamp(80, 100),
       sleepHours: sleepHours.clamp(0, 24),
       stressScore: stress.clamp(0, 100),
       bmi: bmi.clamp(10, 60),
       steps: steps,
-      calories: caloriesFinal,
+      calories: calories,
       fetchedAt: now,
-      isSimulated: false,
+      isSimulated: heartRateValue == null || spo2Value == null,
     );
+  }
+
+  static double _latestSleepHours(List<HealthDataPoint> points, DateTime now) {
+    final cutoff = now.subtract(const Duration(days: 2));
+    var sleepPoints = points
+        .where((point) =>
+            point.type == HealthDataType.SLEEP_ASLEEP &&
+            point.dateTo.isAfter(cutoff) &&
+            point.dateTo.isBefore(now))
+        .toList();
+    if (sleepPoints.isEmpty) {
+      sleepPoints = points
+          .where((point) =>
+              point.type == HealthDataType.SLEEP_SESSION &&
+              point.dateTo.isAfter(cutoff) &&
+              point.dateTo.isBefore(now))
+          .toList();
+    }
+    if (sleepPoints.isEmpty) return 0;
+
+    sleepPoints.sort((a, b) => b.dateTo.compareTo(a.dateTo));
+    final latestEnd = sleepPoints.first.dateTo;
+    final sessionStart = latestEnd.subtract(const Duration(hours: 24));
+    // Các giai đoạn ngủ có thể chồng lặp, cần gộp khoảng thời gian trước khi cộng.
+    final intervals = sleepPoints
+        .where((point) =>
+            point.dateFrom.isBefore(latestEnd) &&
+            point.dateTo.isAfter(sessionStart))
+        .map((point) => (
+              start: point.dateFrom.isBefore(sessionStart)
+                  ? sessionStart
+                  : point.dateFrom,
+              end: point.dateTo.isAfter(latestEnd) ? latestEnd : point.dateTo,
+            ))
+        .toList()
+      ..sort((a, b) => a.start.compareTo(b.start));
+
+    var total = Duration.zero;
+    DateTime? intervalStart;
+    DateTime? intervalEnd;
+    for (final interval in intervals) {
+      if (intervalStart == null || intervalEnd == null) {
+        intervalStart = interval.start;
+        intervalEnd = interval.end;
+      } else if (interval.start.isAfter(intervalEnd)) {
+        total += intervalEnd.difference(intervalStart);
+        intervalStart = interval.start;
+        intervalEnd = interval.end;
+      } else if (interval.end.isAfter(intervalEnd)) {
+        intervalEnd = interval.end;
+      }
+    }
+    if (intervalStart != null && intervalEnd != null) {
+      total += intervalEnd.difference(intervalStart);
+    }
+
+    final hours = total.inMinutes / 60;
+    return hours > 0 && hours < 24 ? hours : 0;
+  }
+
+  static Future<int> _todaySteps(
+    List<HealthDataPoint> points,
+    DateTime startToday,
+    DateTime now,
+  ) async {
+    try {
+      final total = await _health.getTotalStepsInInterval(startToday, now);
+      if (total != null) return total;
+    } catch (error) {
+      debugPrint('Could not aggregate Health Connect steps: $error');
+    }
+
+    return points
+        .where((point) =>
+            point.type == HealthDataType.STEPS &&
+            point.dateFrom.isBefore(now) &&
+            point.dateTo.isAfter(startToday) &&
+            point.value is NumericHealthValue)
+        .fold<int>(
+          0,
+          (sum, point) =>
+              sum + (point.value as NumericHealthValue).numericValue.toInt(),
+        );
+  }
+
+  static double _todayActiveCalories(
+    List<HealthDataPoint> points,
+    DateTime startToday,
+    DateTime now,
+  ) {
+    final calories = points
+        .where((point) =>
+            point.type == HealthDataType.ACTIVE_ENERGY_BURNED &&
+            point.dateFrom.isBefore(now) &&
+            point.dateTo.isAfter(startToday) &&
+            point.value is NumericHealthValue)
+        .fold<double>(
+          0,
+          (sum, point) =>
+              sum + (point.value as NumericHealthValue).numericValue.toDouble(),
+        );
+    return double.parse(calories.toStringAsFixed(0));
   }
 
   static double _estimateStress({
@@ -237,9 +217,7 @@ $caloriesFinal
     required double sleepHours,
   }) {
     final hrN = ((hr - 60) / 60).clamp(0, 1);
-
     final spo2N = ((98 - spo2) / 10).clamp(0, 1);
-
     final sleepN = ((7 - sleepHours) / 7).clamp(0, 1);
 
     return (0.45 * hrN + 0.35 * spo2N + 0.20 * sleepN) * 100;

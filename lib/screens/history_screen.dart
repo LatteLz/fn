@@ -1,5 +1,3 @@
-// STT4 - Phan Thị Yến Ngọc
-// Firestore lịch sử dự báo + đọc PredictionResult
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -92,10 +90,45 @@ class HistoryScreen extends StatelessWidget {
             itemCount: docs.length,
             itemBuilder: (ctx, i) {
               final d = docs[i].data() as Map<String, dynamic>;
+              final scanStatus = d['scan_status'] as String?;
+              final timestamp = d['timestamp'];
+              final ts =
+                  timestamp is String ? DateTime.tryParse(timestamp) : null;
+              if (scanStatus != null && scanStatus != 'success') {
+                return SGCard(
+                  child: Row(
+                    children: [
+                      const Icon(Icons.info_outline, color: SGColor.riskMid),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Lần quét tự động chưa hoàn tất',
+                                style: SGText.h3),
+                            const SizedBox(height: 4),
+                            Text(
+                              d['scan_message'] ?? 'Không lấy được kết quả.',
+                              style: SGText.body,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              ts != null
+                                  ? DateFormat('dd/MM/yyyy  HH:mm').format(ts)
+                                  : '—',
+                              style: SGText.caption,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
               final prob = (d['ensemble'] ?? 0).toDouble();
               final level = d['risk_level'] ?? 'THẤP';
               final color = _hexColor(d['risk_color'] ?? '#4CAF50');
-              final ts = DateTime.tryParse(d['timestamp'] ?? '');
               final lr = (d['lr'] ?? 0).toDouble();
               final dt = (d['dt'] ?? 0).toDouble();
               final rf = (d['rf'] ?? 0).toDouble();
@@ -103,7 +136,6 @@ class HistoryScreen extends StatelessWidget {
               return SGCard(
                 child: Column(children: [
                   Row(children: [
-                    // Circle prob
                     Container(
                       width: 58,
                       height: 58,
@@ -138,14 +170,12 @@ class HistoryScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                              ts != null
-                                  ? DateFormat('dd/MM/yyyy  HH:mm').format(ts)
-                                  : '—',
+                              '${ts != null ? DateFormat('dd/MM/yyyy  HH:mm').format(ts) : '—'}'
+                              '${d['is_background'] == true ? ' · Quét tự động' : ''}',
                               style: SGText.caption),
                         ])),
                     Icon(Icons.chevron_right, color: Colors.grey.shade400),
                   ]),
-                  // Mini model comparison
                   if (lr > 0 || dt > 0 || rf > 0) ...[
                     const Divider(height: 16),
                     Row(

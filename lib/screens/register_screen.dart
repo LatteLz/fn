@@ -1,6 +1,3 @@
-// STT2 - Nguyễn Ngọc Thùy Dương
-// Bước 1: Tài khoản (Firebase Auth đăng ký/đăng nhập)
-// Bước 2: Hồ sơ lâm sàng → Firestore
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -17,7 +14,6 @@ class _RegisterScreenState extends State<RegisterScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tab;
 
-  // Bước 1
   final _accKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
@@ -26,7 +22,6 @@ class _RegisterScreenState extends State<RegisterScreen>
   bool _isLogin = false;
   bool _loadingAuth = false;
 
-  // Bước 2
   final _profKey = GlobalKey<FormState>();
   final _ageCtrl = TextEditingController();
   final _glucoseCtrl = TextEditingController();
@@ -89,8 +84,6 @@ class _RegisterScreenState extends State<RegisterScreen>
         final user = cred.user!;
         await user.updateDisplayName(_nameCtrl.text.trim());
 
-        // Tạo hồ sơ mặc định ngay lập tức để tránh màn hình "Chưa có hồ sơ"
-        // User có thể chỉnh lại trong tab Hồ Sơ sau
         final defaultProfile = {
           'uid': user.uid,
           'name': _nameCtrl.text.trim(),
@@ -111,7 +104,6 @@ class _RegisterScreenState extends State<RegisterScreen>
             .doc(user.uid)
             .set(defaultProfile, SetOptions(merge: true));
 
-        // Chuyển sang bước 2 để user điền thông tin thật (nếu widget còn mounted)
         if (mounted && !_tab.indexIsChanging) _tab.animateTo(1);
       }
     } on FirebaseAuthException catch (e) {
@@ -177,7 +169,6 @@ class _RegisterScreenState extends State<RegisterScreen>
       backgroundColor: SGColor.bg,
       body: SafeArea(
         child: Column(children: [
-          // Header
           Container(
             color: SGColor.primary,
             width: double.infinity,
@@ -208,8 +199,6 @@ class _RegisterScreenState extends State<RegisterScreen>
                 ),
             ]),
           ),
-
-          // Body
           Expanded(
             child: _isLogin
                 ? _LoginForm(
@@ -259,8 +248,6 @@ class _RegisterScreenState extends State<RegisterScreen>
                     ),
                   ]),
           ),
-
-          // Toggle
           Padding(
             padding: const EdgeInsets.only(bottom: 16),
             child: TextButton(
@@ -280,7 +267,6 @@ class _RegisterScreenState extends State<RegisterScreen>
   }
 }
 
-// ── Bước 1: Tài khoản ─────────────────────────────────────────────
 class _AccountForm extends StatelessWidget {
   final GlobalKey<FormState> formKey;
   final TextEditingController nameCtrl, emailCtrl, passCtrl;
@@ -419,7 +405,6 @@ class _LoginForm extends StatelessWidget {
       );
 }
 
-// ── Bước 2: Hồ sơ lâm sàng ───────────────────────────────────────
 class _ProfileForm extends StatelessWidget {
   final GlobalKey<FormState> formKey;
   final TextEditingController ageCtrl, glucoseCtrl, bmiCtrl;

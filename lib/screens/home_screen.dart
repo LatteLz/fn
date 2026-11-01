@@ -1,9 +1,8 @@
-// STT3 - Nguyễn Thị Quỳnh Như
-// Dashboard biometrics Fit 3: HR, SpO2, BMI, Steps, Sleep, Calories
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/models.dart';
+import '../services/background_monitoring.dart';
 import '../services/health_service.dart';
 import '../theme/app_theme.dart';
 
@@ -35,21 +34,39 @@ class _HomeScreenState extends State<HomeScreen> {
       if (uid == null) return;
       final doc =
           await FirebaseFirestore.instance.collection('users').doc(uid).get();
-      if (doc.exists && mounted)
+      if (doc.exists && mounted) {
         setState(() => _user = UserModel.fromJson(doc.data()!));
+      }
     } catch (e) {
-      // Firestore lỗi (permission, network) → bỏ qua, hiển thị data mặc định
       debugPrint('_loadUser error: $e');
     }
   }
 
   Future<void> _fetchBio() async {
-    // Luôn set loading = true để hiển thị vòng quay ngay lúc nhấn
     if (mounted) setState(() => _loading = true);
 
     try {
-      // Ép timeout 3 giây: nếu Health Connect chưa phản hồi, tự trả về data mặc định
       final granted = await HealthService.requestPermissions();
+      if (granted) {
+        try {
+          final backgroundGranted = await BackgroundMonitoring
+              .requestBackgroundHealthReadPermission();
+          if (!backgroundGranted && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text(
+                'Cần cho phép Health Connect đọc dữ liệu nền để quét tự động.',
+              ),
+            ));
+          }
+        } catch (error) {
+          debugPrint('Background health permission request failed: $error');
+        }
+      }
+      try {
+        await BackgroundMonitoring.requestNotificationPermission();
+      } catch (error) {
+        debugPrint('Notification permission request failed: $error');
+      }
 
       final bio = granted
           ? await HealthService.fetchLatestData().timeout(
@@ -60,14 +77,14 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         setState(() {
           _bio = bio;
-          _loading = false; // Tắt vòng quay ngay khi xong
+          _loading = false;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _bio = BiometricSnapshot.defaultValues();
-          _loading = false; // Luôn tắt vòng quay nếu có lỗi
+          _loading = false;
         });
       }
     }
@@ -91,7 +108,10 @@ class _HomeScreenState extends State<HomeScreen> {
               onPressed: _fetchBio),
           IconButton(
               icon: const Icon(Icons.logout),
-              onPressed: () => FirebaseAuth.instance.signOut()),
+              onPressed: () async {
+                await BackgroundMonitoring.stop();
+                await FirebaseAuth.instance.signOut();
+              }),
         ],
       ),
       body: RefreshIndicator(
@@ -113,7 +133,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ]),
             ),
             const SizedBox(height: 12),
-
             if (_bio != null && _bio!.isSimulated)
               Container(
                 margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -134,9 +153,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   )),
                 ]),
               ),
-
             const SizedBox(height: 12),
-
             _loading
                 ? const Center(
                     child: Padding(
@@ -222,63 +239,62 @@ class _HomeScreenState extends State<HomeScreen> {
                           ]),
                         ]),
                       ),
-
             const SizedBox(height: 16),
-
-            // BMI card
             if (_bio != null)
-              SGCard(
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Chỉ số BMI', style: SGText.h3),
-                      const SizedBox(height: 12),
-                      Row(children: [
-                        Text(_bio!.bmi.toStringAsFixed(1),
-                            style: const TextStyle(
-                                fontSize: 36,
-                                fontWeight: FontWeight.bold,
-                                color: SGColor.primary)),
-                        const SizedBox(width: 14),
-                        Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: SGCard(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Chỉ số BMI', style: SGText.h3),
+                        const SizedBox(height: 12),
+                        Row(children: [
+                          Text(_bio!.bmi.toStringAsFixed(1),
+                              style: const TextStyle(
+                                  fontSize: 36,
+                                  fontWeight: FontWeight.bold,
+                                  color: SGColor.primary)),
+                          const SizedBox(width: 14),
+                          Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(_bmiLabel(_bio!.bmi),
+                                    style: TextStyle(
+                                        color: _bmiColor(_bio!.bmi),
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15)),
+                                const Text('kg/m²', style: SGText.caption),
+                              ]),
+                        ]),
+                        const SizedBox(height: 10),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: LinearProgressIndicator(
+                            value: ((_bio!.bmi - 10) / 50).clamp(0.0, 1.0),
+                            minHeight: 10,
+                            backgroundColor: Colors.grey.shade200,
+                            valueColor:
+                                AlwaysStoppedAnimation(_bmiColor(_bio!.bmi)),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        const Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(_bmiLabel(_bio!.bmi),
-                                  style: TextStyle(
-                                      color: _bmiColor(_bio!.bmi),
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 15)),
-                              const Text('kg/m²', style: SGText.caption),
+                              Text('Gầy\n<18.5',
+                                  style: SGText.caption,
+                                  textAlign: TextAlign.center),
+                              Text('Bình thường\n18.5–24.9',
+                                  style: SGText.caption,
+                                  textAlign: TextAlign.center),
+                              Text('Béo phì\n>30',
+                                  style: SGText.caption,
+                                  textAlign: TextAlign.center),
                             ]),
                       ]),
-                      const SizedBox(height: 10),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: LinearProgressIndicator(
-                          value: ((_bio!.bmi - 10) / 50).clamp(0.0, 1.0),
-                          minHeight: 10,
-                          backgroundColor: Colors.grey.shade200,
-                          valueColor:
-                              AlwaysStoppedAnimation(_bmiColor(_bio!.bmi)),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      const Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('Gầy\n<18.5',
-                                style: SGText.caption,
-                                textAlign: TextAlign.center),
-                            Text('Bình thường\n18.5–24.9',
-                                style: SGText.caption,
-                                textAlign: TextAlign.center),
-                            Text('Béo phì\n>30',
-                                style: SGText.caption,
-                                textAlign: TextAlign.center),
-                          ]),
-                    ]),
+                ),
               ),
-
             const SizedBox(height: 20),
           ]),
         ),

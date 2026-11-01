@@ -1,20 +1,19 @@
-// STT8 - Cù Thị Hoài Ngọc
-// Firebase init | Auth Gate | Bottom Navigation
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+
 import 'theme/app_theme.dart';
 import 'screens/register_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/prediction_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/profile_screen.dart';
+import 'services/background_monitoring.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
-    // Nạp thông số cấu hình chính xác từ file google-services.json
     await Firebase.initializeApp(
       options: const FirebaseOptions(
         apiKey: 'AIzaSyAnlTjNUS8TXyYbA4CkwctxqkgtcNfvPUs',
@@ -24,9 +23,11 @@ void main() async {
         storageBucket: 'strokeguard-nhom9.firebasestorage.app',
       ),
     );
-    print("Firebase của StrokeGuard Nhóm 9 đã kích hoạt thành công!");
+    debugPrint("Firebase của StrokeGuard Nhóm 9 đã kích hoạt thành công!");
+
+    await BackgroundMonitoring.initialize();
   } catch (e) {
-    print("Firebase init error: $e");
+    debugPrint("App initialization error: $e");
   }
 
   runApp(const StrokeGuardApp());
@@ -66,6 +67,12 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _index = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    BackgroundMonitoring.startForCurrentUser();
+  }
 
   static const _screens = [
     HomeScreen(),

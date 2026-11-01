@@ -1,4 +1,3 @@
-// STT7 - Lê Thị Kim Ngân: Design system
 import 'package:flutter/material.dart';
 
 class SGColor {
@@ -28,7 +27,6 @@ class SGText {
       fontSize: 13, fontWeight: FontWeight.w600, color: SGColor.textPrimary);
 }
 
-// ── SGCard ────────────────────────────────────────────────────────
 class SGCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry? padding;
@@ -52,7 +50,6 @@ class SGCard extends StatelessWidget {
       );
 }
 
-// ── RiskBadge ─────────────────────────────────────────────────────
 class RiskBadge extends StatelessWidget {
   final String riskLevel;
   const RiskBadge({super.key, required this.riskLevel});
@@ -87,7 +84,6 @@ class RiskBadge extends StatelessWidget {
       );
 }
 
-// ── ThemeData ─────────────────────────────────────────────────────
 ThemeData buildAppTheme() => ThemeData(
       useMaterial3: true,
       colorScheme: ColorScheme.fromSeed(seedColor: SGColor.primary),
